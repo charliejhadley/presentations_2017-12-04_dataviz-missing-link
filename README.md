@@ -11,6 +11,12 @@ To participate in this workshop, please sure you have the following:
 - An installation of R [https://cran.r-project.org/](https://cran.r-project.org/)
 - An installation of RStudio [https://www.rstudio.com/products/rstudio/download/](https://www.rstudio.com/products/rstudio/download/)
 
+*As close as possible to the course* please download the materials in this repository ([https://github.com/martinjhnhadley/2017_data-viz-missing-link](https://github.com/martinjhnhadley/2017_data-viz-missing-link)). Here's a short URL [https://goo.gl/9syL1E](https://goo.gl/9syL1E).
+
+Click on "Clone or download" and select "Download as ZIP". Ensure to unzip the folders to a convenient location.
+
+<img src="/download-repo.png" width="400">
+
 # How much will I learn?
 
 As much as we can comfortably achieve in 1h 30! If you've never used R before you'll be given the following complete (and reproducible) workflow:
