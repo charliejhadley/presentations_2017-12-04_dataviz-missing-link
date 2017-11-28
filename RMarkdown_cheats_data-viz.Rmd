@@ -1,0 +1,247 @@
+---
+output: 
+  html_document:
+    toc: TRUE
+    toc_float: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+
+# Introduction to RMarkdown
+
+RMarkdown is a powerful "literate programming" environment, meaning that one can easily combine text, code and output - including interactive `htmlwidgets`. There are three types of document that can be created:
+
+- PDF: Useful when you want to print documents (and remains the default output format in academic publishing)
+- MS Word: Useful if others you're working with **need** to work with MS Word documents
+- HTML: Useful for creating interactive content you can publish to the web
+
+All HTML documents (including reports and presentations) created with RMarkdown can be published freely (and publicly) to [RPubs.com](RPubs.com).
+
+All of the content below uses the same code as from the `cheats_data-viz.R` file but demonstrates how different types of content can be combined. The data behind these examples was extrapolated and anonymised from the following Figshare deposit: [https://doi.org/10.6084/m9.figshare.4516772](https://doi.org/10.6084/m9.figshare.4516772).
+
+The following packages are used in this document, and all data is from the `data/cheats_journeys.csv` file.
+
+```{r echo=TRUE}
+library("tidyverse")
+library("leaflet")
+library("highcharter")
+library("sf")
+library("statesRcontiguous")
+library("lubridate")
+journeys <- read_csv("data/cheats_journeys.csv")
+```
+
+
+# Maps
+
+The leaflet library allows us to create interactive maps, here are two common GIS visualsiations. To learn morw about GIS visualisations, please do visit the [Oxshef Charts website](https://oxshef.github.io/oxshef_charts/geoviz_maps.html).
+
+## Scatter geo plots
+
+scatter geo plots are very useful for simply demonstrating *where* events occured. In the map below circle markers are used to show the start and end locations in red and green, respectively.
+
+```{r leaflet-scatter-geoplot}
+journeys %>%
+  leaflet() %>%
+  addTiles() %>%
+  addCircleMarkers(
+    lng = ~ start.longitude,
+    lat = ~ start.latitude,
+    color = "red",
+    radius = 1
+  ) %>%
+  addCircleMarkers(
+    lng = ~ end.longitude,
+    lat = ~ end.latitude,
+    color = "green",
+    radius = 1
+  )
+```
+
+## Choropleth
+
+The `leaflet` library allows us to easily visualise choropleth, provided we have appropriate shapefiles available. Here we prepare a shaepfile of the contiguous USA using the `statesRcontiguous` library:
+
+```{r echo=TRUE}
+contiguous_usa <- shp_all_us_states %>%
+  filter(contiguous.united.states == TRUE)
+```
+
+Using the `sf` library it is fairly easy to calculate the number of journeys that started in each State:
+
+```{r echo=TRUE}
+state_send_locs <- journeys %>%
+  filter(start.country == "USA") %>%
+  st_as_sf(
+    coords = c("start.longitude", "start.latitude"),
+    crs = st_crs(contiguous_usa)
+  )
+
+contiguous_send_counts <- contiguous_usa %>%
+  mutate(send.counts = st_covers(contiguous_usa, state_send_locs) %>%
+           lengths())
+```
+
+Finally, we can create a palette and visualise this data:
+
+```{r echo=TRUE}
+palette_contiguous_us <-
+  colorBin("YlOrBr", domain = contiguous_send_counts$send.counts)
+
+contiguous_send_counts %>%
+  leaflet() %>%
+  addPolygons(
+    fillColor = ~ palette_contiguous_us(send.counts),
+    fillOpacity = 1,
+    weight = 1,
+    color = "#000",
+    label = ~ paste0(state.name, " (", send.counts, " journeys)") 
+  ) %>%
+  addLegend(pal = palette_contiguous_us,
+            values = ~send.counts)
+```
+
+# Calendar heatmap
+
+`ggplot2` is an extraudinarily powerful and versatile tool for visualising data with R, implementing a consistent and complete "grammar of graphics". As an example of how far you can go with `ggplot2` this is a calendar heatmap showing the distribution of letters sent through the 1860s in the journeys dataset.
+
+```{r}
+dated_journeys <- journeys %>%
+  select(date, number.of.letters) %>%
+  mutate(year = year(date),
+         yearmonthf = paste(month(date, label = TRUE), year(date)),
+         monthf = month(date, abbr = TRUE, label = TRUE),
+         week = week(date),
+         monthweek = ceiling(day(journeys$date) / 7),
+         weekdayf = wday(date,label = TRUE))
+
+gg_dated_journeys <- dated_journeys %>%
+  filter(date >= dmy("01-01-1860") & date <= dmy("01-12-1869")) %>%
+  ggplot(aes(monthweek, weekdayf, fill = number.of.letters)) + 
+  geom_tile(colour = "white") + 
+  facet_grid(year~monthf) +
+  scale_fill_gradient(low="red", high="green") +
+  labs(x="Week of Month",
+       y="",
+       title = "Number of letters sent per day in the 1860s", 
+       fill = "Number of letters")
+gg_dated_journeys
+```
+
+# Comparing ggplot2 and highcharter
+
+The `highcharter` library allows us to create very professional looking interactive charts and plots. It's important to note that the library is **NOT** free to use for commercial or governmental usage, though we can use it when communicating research outputs.
+
+Both `ggplot2` and `highcharter` use a very similar syntax:
+
+- `ggplot(data, aes(x = x, y = y))`: the `aes` function sets the aesthetics for the ggplot object, which columns in `data` should be used for which visual properties of the chart.
+- `hchart(data, hcaes(x = x, y = y))`: the `hcaes` function sets the aesthetics for the highcharter object, which columns in `data` should be used for which visual properties of the chart
+
+## Country -> Country journeys tally {.tabset}
+
+If you refer to the .Rmd file used to generate this report, you'll notice the section header has {.tabset} appended. This allows us to create the tabbed content below from any child subheading of the current heading level.
+
+### ggplot2
+
+```{r}
+country_to_country_counts <- journeys %>%
+  count(start.country, end.country) %>%
+  mutate(journey = paste(start.country, "->", end.country)) %>%
+  arrange(n) %>%
+  mutate(journey = as.factor(journey)) %>%
+  mutate(journey = fct_reorder(journey, n))
+
+gg_country_to_country_counts <- country_to_country_counts %>%
+  ggplot(aes(x = journey, y = n)) + geom_col() +
+  coord_flip() +
+  xlab("") +
+  ylab("Number of journeys") +
+  ggtitle("Number of journeys split by start and end country")
+gg_country_to_country_counts
+```
+
+### highcharter
+
+```{r}
+journeys %>%
+  count(start.country, end.country) %>%
+  mutate(journey = paste(start.country, "->", end.country)) %>%
+  arrange(desc(n)) %>%
+  hchart(type = "bar",
+         hcaes(x = journey, y = n)) %>%
+  hc_xAxis(title = list(text = "")) %>%
+  hc_yAxis(title = list(text = "Number of journeys")) %>%
+  hc_title(text = "Number of journeys split by start and end country")
+```
+
+## Grouped bar charts {.tabset}
+
+When constructing grouped or stacked bar charts in `ggplot2` or `highcharter` one must ensure to reshape data into long format:
+
+- variable column: a measure of the data 
+- value column: a value for a specific measure of the data
+
+This is achieved with `gather` from the `tidyr` library.
+
+```{r}
+end_country_tallies <- journeys %>%
+  group_by(end.country) %>%
+  summarise(total.letters = sum(number.of.letters),
+            total.journeys = n()) %>%
+  mutate(
+    total.letters = total.letters / sum(total.letters),
+    total.journeys = total.journeys / sum(total.journeys)
+  ) %>%
+  arrange(total.letters) %>%
+  mutate(end.country = fct_reorder(end.country, total.letters)) %>%
+  gather(measure, value,-end.country) 
+end_country_tallies
+```
+
+### ggplot2
+
+```{r}
+end_country_tallies %>%
+  ggplot(aes(x = end.country,
+             y = value,
+             fill = measure)) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  xlab("Final Destination Country") +
+  ylab("Percentage") +
+  ggtitle("Final destination of letters",
+          subtitle = "Ordered by percentage of journeys") +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_manual(
+    values = c("#1b9e77", "#7570b3"),
+    name = "",
+    breaks = c("total.letters", "total.journeys"),
+    labels = c("Percentage of Journeys", "Percentage of letters")
+  )
+```
+
+### highcharter
+
+```{r}
+end_country_tallies %>%
+  hchart(type = "bar",
+         hcaes(x = end.country,
+               y = 100 * value,
+               group = measure)) %>%
+  hc_xAxis(title = list(text = "Final Destination Country"),
+           reversed = FALSE) %>%
+  hc_yAxis(title = list(text = "Percentage"),
+           labels = list(format = '{value}%')) %>%
+  hc_title(text = "Final destination of letters") %>%
+  hc_subtitle(text = "Ordered by percentage of journeys")
+```
+
